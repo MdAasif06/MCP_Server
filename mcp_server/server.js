@@ -15,7 +15,7 @@ async function fetchWeatherCity(city) {
 //add an aditional tool
 server.tool("fetchWeatherCity", { city: z.string() }, async ({ city }) => {
   const result = await fetchWeatherCity(city);
-  return {content: [{ type: "text", text: JSON.stringify(result) }]};
+  return { content: [{ type: "text", text: JSON.stringify(result) }] };
 });
 
 async function main() {
