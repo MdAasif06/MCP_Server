@@ -1,109 +1,145 @@
 import Groq from "groq-sdk";
+import readLine from "node:readline/promises";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+const expenseDB = [];
+
+const rl = readLine.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
+
+const getTotalExpense = ({ from, to }) => {
+  // console.log("calling getTotalExpense tool");
+  // console.log("from:", from);
+  // console.log("to:", to);
+  const expense = expenseDB.reduce((acc, item) => {
+    return acc + item.amount;
+  }, 0);
+
+  return `${expense}INR`;
+};
+const addExpense = ({ name, amount }) => {
+  // console.log(`Adding ${amount}to expense DB for ${name}`);
+  expenseDB.push({ name, amount });
+  return `added to database success`;
+};
 
 const callAgent = async () => {
   const messages = [
     {
       role: "system",
       content: `You are Polenesia,a personal finance assistent.
-           Your task is to assist user with their expenses,
-           balance and financial planning
-           current datetime:${new Date().toUTCString()}`,
+      Your task is to assist user with their expenses,
+      balance and financial planning
+      you have access to following tool:
+      1. getTotalExpense({from,to}:string //Get total expense for the period)
+      2. addExpense({name,amount}:string //Add new expense to the expenseDB)
+      current datetime:${new Date().toUTCString()}`,
     },
   ];
-  messages.push({
-    role: "user",
-    content: "can you tell me my expense of this months",
-  });
-  const completion = await groq.chat.completions.create({
-    messages: messages,
-    model: "llama-3.3-70b-versatile",
-    tools: [
-      {
-        type: "function",
-        function: {
-          name: "getTotalExpense",
-          description: "Get the total expense from date to date",
-          parameters: {
-            type: "object",
-            properties: {
-              from: {
-                type: "string",
-                description: "From date to get the expense.",
-              },
-              to: {
-                type: "string",
-                description: "to date to get the expense",
-              },
-            },
-          },
-        },
-      },
-    ],
-  });
-  // console.log(completion.choices[0].message)
 
-  console.log(JSON.stringify(completion.choices[0], null, 2));
-  // const pretty = completion.choices[0].message.content.replace(/\\n/g, "\n");
-  // console.log(pretty)
-  messages.push(completion.choices[0].message)
-  const toolCalls = completion.choices[0].message.tool_calls;
-  if (!toolCalls) {
-    console.log(`Assistent:${completion.choices[0].message.content}`);
-    return;
-  }
-  for (const tool of toolCalls) {
-    const functionName = tool.function.name;
-    const functionArgs = tool.function.arguments;
-
-    let result = "";
-    if (functionName === "getTotalExpense") {
-      result = getTotalExpense(JSON.parse(functionArgs));
+  // this is for user loop
+  while (true) {
+    const question = await rl.question("User: ");
+    if(question==='bye'){
+      // console.log("chat end")
+      break
     }
     messages.push({
-      role:"tool",
-      content:result,
-      tool_call_id:tool.id
-    })
-
-    const completion2 = await groq.chat.completions.create({
-      messages:messages,
-      model: "llama-3.3-70b-versatile",
-      tools: [
-        {
-          type: "function",
-          function: {
-            name: "getTotalExpense",
-            description: "Get the total expense from date to date",
-            parameters: {
-              type: "object",
-              properties: {
-                from: {
-                  type: "string",
-                  description: "From date to get the expense.",
+      role: "user",
+      content: question,
+    });
+    // this is agent loop
+    while (true) {
+      const completion = await groq.chat.completions.create({
+        messages: messages,
+        model: "llama-3.3-70b-versatile",
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "getTotalExpense",
+              description: "Get the total expense from date to date",
+              parameters: {
+                type: "object",
+                properties: {
+                  from: {
+                    type: "string",
+                  },
+                  to: {
+                    type: "string",
+                  },
                 },
-                to: {
-                  type: "string",
-                  description: "to date to get the expense",
-                },
+                required: ["from", "to"],
               },
             },
           },
-        },
-      ],
-    });
-    console.log(JSON.stringify(completion2.choices[0]));
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "addExpense",
+              description: "Add new expense entry to the expense databse",
+              parameters: {
+                type: "object",
+                properties: {
+                  name: {
+                    type: "string",
+                    description: "Name of the expense",
+                  },
+                  amount: {
+                    type: "number",
+                    description: "Amount of the expense",
+                  },
+                },
+                required: ["name", "amount"],
+              },
+            },
+          },
+        ],
+      });
+
+      // console.log(JSON.stringify(completion.choices[0], null, 2));
+      messages.push(completion.choices[0].message);
+      const toolCalls = completion.choices[0].message.tool_calls;
+      if (!toolCalls) {
+        console.log(`Assistent:${completion.choices[0].message.content}`);
+        break;
+      }
+      for (const tool of toolCalls) {
+        const functionName = tool.function.name;
+        const functionArgs = tool.function.arguments;
+
+        let result = "";
+        if (functionName === "getTotalExpense") {
+          result = getTotalExpense(JSON.parse(functionArgs));
+        } else if (functionName === "addExpense") {
+          result = addExpense(JSON.parse(functionArgs));
+        }
+        messages.push({
+          role: "tool",
+          content: result,
+          tool_call_id: tool.id,
+        });
+        // console.log(JSON.stringify(completion2.choices[0]));
+      }
+      // console.log("#####################################");
+      // console.log("messages", messages);
+      // console.log("#####################################");
+      // console.log("DB", expenseDB);
+    }
   }
-  console.log("#####################################")
-  console.log("messages",messages)
+  rl.close()
 };
-callAgent();
 
 /**
  * get total expenses
  */
-const getTotalExpense = ({ from, to }) => {
-  console.log("calling the getTotalExpense tool");
-  return `1000`;
-};
+// const getTotalExpense = ({ from, to }) => {
+//   console.log("calling the getTotalExpense tool");
+//   return "2000 INR";
+// };
+callAgent();
