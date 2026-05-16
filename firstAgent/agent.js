@@ -4,6 +4,7 @@ import readLine from "node:readline/promises";
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const expenseDB = [];
+const incomeDB = [];
 
 const rl = readLine.createInterface({
   input: process.stdin,
@@ -26,6 +27,19 @@ const addExpense = ({ name, amount }) => {
   return `added to database success`;
 };
 
+const addIncome = ({ name, amount }) => {
+  incomeDB.push({ name, amount });
+  return `new income added in database`;
+};
+
+const getMoneyBalance = () => {
+  const totalIncome = incomeDB.reduce((acc, curr) => {
+    acc + curr.amount;
+  }, 0);
+  const totalExpense = expenseDB.reduce((acc, curr) => acc + curr.amount, 0);
+  return `${totalIncome - totalExpense}INR`;
+};
+
 const callAgent = async () => {
   const messages = [
     {
@@ -36,6 +50,8 @@ const callAgent = async () => {
       you have access to following tool:
       1. getTotalExpense({from,to}:string //Get total expense for the period)
       2. addExpense({name,amount}:string //Add new expense to the expenseDB)
+      3. addIncome({name,amount}:string //Add new income to the database)
+      4. addIncome( ():string //Given total balance in my database)
       current datetime:${new Date().toUTCString()}`,
     },
   ];
@@ -43,9 +59,9 @@ const callAgent = async () => {
   // this is for user loop
   while (true) {
     const question = await rl.question("User: ");
-    if(question==='bye'){
+    if (question === "bye") {
       // console.log("chat end")
-      break
+      break;
     }
     messages.push({
       role: "user",
@@ -76,8 +92,6 @@ const callAgent = async () => {
               },
             },
           },
-        ],
-        tools: [
           {
             type: "function",
             function: {
@@ -99,6 +113,34 @@ const callAgent = async () => {
               },
             },
           },
+          {
+            type: "function",
+            function: {
+              name: "addIncome",
+              description: "Add new income entry in database",
+              parameters: {
+                type: "object",
+                properties: {
+                  name: {
+                    type: "string",
+                    description: "Name of the income",
+                  },
+                  amount: {
+                    type: "number",
+                    description: "Amount of the income",
+                  },
+                },
+                required: ["name", "amount"],
+              },
+            },
+          },
+          {
+            type: "function",
+            function: {
+              name: "getMoneyBalance",
+              description: "Given total balance in my database",
+            },
+          },
         ],
       });
 
@@ -118,6 +160,10 @@ const callAgent = async () => {
           result = getTotalExpense(JSON.parse(functionArgs));
         } else if (functionName === "addExpense") {
           result = addExpense(JSON.parse(functionArgs));
+        } else if (functionName === "addIncome") {
+          result = addIncome(JSON.parse(functionArgs));
+        } else if (functionName === "getMoneyBalance") {
+          result = getMoneyBalance(JSON.parse(functionArgs));
         }
         messages.push({
           role: "tool",
@@ -132,7 +178,7 @@ const callAgent = async () => {
       // console.log("DB", expenseDB);
     }
   }
-  rl.close()
+  rl.close();
 };
 
 /**
